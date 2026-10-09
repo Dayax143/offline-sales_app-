@@ -24,7 +24,7 @@ namespace key_luxery1
 		{
 			try
 			{
-				string query = "SELECT payment_id AS [Payment ID], invoice_id AS [Invoice ID], customer_id AS [Customer ID], amount_paid AS [Amount Paid], payment_method AS [Method], reference_no AS [Reference], date AS [Payment Date] FROM tblPayment WHERE 1=1";
+				string query = "SELECT payment_id AS [Payment ID], invoice_id AS [Invoice ID], amount_paid AS [Amount Paid], payment_method AS [Method], reference_no AS [Reference], payment_date AS [Payment Date] FROM tblPayment WHERE 1=1";
 
 				if (!string.IsNullOrEmpty(searchKeyword))
 				{
@@ -37,7 +37,7 @@ namespace key_luxery1
 					query += $" AND payment_method = '{paymentMethod.Replace("'", "''")}'";
 				}
 
-				query += " ORDER BY date DESC";
+				query += " ORDER BY payment_date DESC";
 
 				sharedClass.DisplayData(dgvPayments, query);
 			}

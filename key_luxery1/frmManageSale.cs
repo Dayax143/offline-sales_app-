@@ -47,12 +47,12 @@ namespace key_luxery1
 				string currentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
 				// Insert a draft/unpaid placeholder record immediately into tblInvoice
-				string query = $"INSERT INTO tblInvoice (invoice_number, invoice_date, subtotal, tax_amount, discount_amount, total_amount, paid_amount, status) " +
-							   $"VALUES ('{generatedInvoiceNo}', '{currentDate}', 0.00, 0.00, 0.00, 0.00, 0.00, 'Draft')";
+				string query = $"INSERT INTO tblInvoice (invoice_no, invoice_date, subtotal, discount,tax, grand_total, status) " +
+							   $"VALUES ('{generatedInvoiceNo}', '{currentDate}', 0.00, 0.00, 0.00, 0.00, 'Draft')";
 				db.ExecuteQueries(query);
 
 				// Fetch the newly created database ID
-				DataTable dtCreated = sharedClass.GetData($"SELECT invoice_id FROM tblInvoice WHERE invoice_number = '{generatedInvoiceNo}'");
+				DataTable dtCreated = sharedClass.GetData($"SELECT invoice_id FROM tblInvoice WHERE invoice_no = '{generatedInvoiceNo}'");
 				if (dtCreated.Rows.Count > 0)
 				{
 					currentInvoiceId = dtCreated.Rows[0]["invoice_id"].ToString();
@@ -70,7 +70,7 @@ namespace key_luxery1
 		{
 			try
 			{
-				DataTable dt = sharedClass.GetData("SELECT customer_id, customer_name, customer_phone FROM tblCustomer WHERE is_deleted = 0");
+				DataTable dt = sharedClass.GetData("SELECT customer_id, customer_name, customer_phone FROM tblCustomer WHERE deleted = 0");
 				cmbCustomer.DataSource = dt;
 				cmbCustomer.DisplayMember = "customer_name";
 				cmbCustomer.ValueMember = "customer_id";
@@ -83,18 +83,27 @@ namespace key_luxery1
 		}
 
 		// Search customer automatically by typing phone number
+		// Declare a variable at the form level to hold the ID
+		public int? selectedCustomerId ;
 		private void txtCustomerPhone_TextChanged(object sender, EventArgs e)
 		{
 			string phone = txtCustomerPhone.Text.Trim();
+			selectedCustomerId = null; // Reset if not found
+
 			if (!string.IsNullOrEmpty(phone))
 			{
 				foreach (DataRowView item in cmbCustomer.Items)
 				{
 					DataRow row = item.Row;
 					string dbPhone = row["customer_phone"]?.ToString() ?? "";
-					if (dbPhone.Contains(phone))
+
+					if (dbPhone.Equals(phone))
 					{
 						cmbCustomer.SelectedItem = item;
+
+						// Get the customer ID from the data row
+						selectedCustomerId = int.Parse(row["customer_id"].ToString());
+						txtcustomer_id.Text = selectedCustomerId.ToString();
 						break;
 					}
 				}
@@ -254,19 +263,18 @@ namespace key_luxery1
 				decimal.TryParse(txtDiscount.Text.Trim(), out discount);
 				decimal grandTotal = subtotal - discount;
 
-				// Update the pre-existing draft invoice with final financial parameters
+				// 1. Update the Draft Invoice (Fixed column names to match database schema)
 				string updateInvoice = $"UPDATE tblInvoice SET " +
-									   $"customer_id = {customerId}, " +
 									   $"invoice_date = '{saleDate}', " +
 									   $"subtotal = {subtotal}, " +
-									   $"discount_amount = {discount}, " +
-									   $"total_amount = {grandTotal}, " +
-									   $"paid_amount = {grandTotal}, " +
+									   $"discount = {discount}, " +
+									   $"grand_total = {grandTotal}, " +
+									   $"total_profit = {grandTotal}, " +
 									   $"status = 'Paid' " +
 									   $"WHERE invoice_id = {currentInvoiceId}";
 				db.ExecuteQueries(updateInvoice);
 
-				// Insert Sale Items & Deduct Stock
+				// 2. Insert Independent Sale Records & Deduct Stock for Each Product
 				foreach (DataGridViewRow row in dgvCart.Rows)
 				{
 					string productId = row.Cells["colProductID"].Value.ToString();
@@ -274,20 +282,20 @@ namespace key_luxery1
 					string qty = row.Cells["colQuantity"].Value.ToString();
 					string lineTotal = row.Cells["colSubtotal"].Value.ToString();
 
-					string insertItem = $"INSERT INTO tblSaleItem (invoice_id, product_id, quantity, unit_price, total_price) " +
-										$"VALUES ({currentInvoiceId}, {productId}, {qty}, {price}, {lineTotal})";
-					db.ExecuteQueries(insertItem);
+					string insertsale = $"INSERT INTO tblSale (invoice_id, product_id, quantity, unit_price, total_price, date) " +
+										$"VALUES ({currentInvoiceId}, {productId}, {qty}, {price}, {lineTotal}, '{saleDate}')";
+					db.ExecuteQueries(insertsale);
 
 					string updateStock = $"UPDATE tblProduct SET quantity = quantity - {qty} WHERE product_id = {productId}";
 					db.ExecuteQueries(updateStock);
 				}
 
-				// Insert Payment Record
+				// 3. Insert Payment Record (Including customer_id as required by your table constraint)
 				string insertPayment = $"INSERT INTO tblPayment (invoice_id, amount_paid, payment_date, payment_method) " +
 									   $"VALUES ({currentInvoiceId}, {grandTotal}, '{saleDate}', '{paymentMethod}')";
 				db.ExecuteQueries(insertPayment);
 
-				isSaleCompleted = true; // Mark as successfully saved so close handler doesn't delete it
+				isSaleCompleted = true;
 				MessageBox.Show("Sale completed successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
 				// Trigger Print Preview
@@ -296,7 +304,7 @@ namespace key_luxery1
 					printDocument1.Print();
 				}
 
-				this.Close(); // Close form after successful checkout
+				this.Close();
 			}
 			catch (Exception ex)
 			{
@@ -393,6 +401,11 @@ namespace key_luxery1
 					// Fail silently on cleanup if needed
 				}
 			}
+		}
+
+		private void cmbCustomer_SelectedIndexChanged(object sender, EventArgs e)
+		{
+
 		}
 	}
 }
